@@ -48,8 +48,8 @@ db_allocated_storage = 20
 db_name              = "airflow"
 
 # PREENCHA com valores de sua escolha antes de executar terraform apply
-db_username = "SUBSTITUA_POR_UM_USUARIO"   # ex: airflow_admin
-db_password = "SUBSTITUA_POR_UMA_SENHA"    # ex: Lab@2024!Secure
+db_username = "airflow_admin"   # ex: airflow_admin
+db_password = "TR3sHD6#"    # ex: Lab@2024!Secure
 
 # -----------------------------------------------------------------------------
 # Airflow
