@@ -1,0 +1,57 @@
+# =============================================================================
+# .gitignore
+# Define quais arquivos e diretórios NÃO devem ser versionados no Git.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Credenciais e segredos — NUNCA versionar
+# -----------------------------------------------------------------------------
+
+# Arquivo com senhas e valores sensíveis definidos pelo usuário
+terraform/terraform.tfvars
+
+# Qualquer arquivo .tfvars com sufixo .local (convenção para overrides locais)
+*.tfvars.local
+
+# -----------------------------------------------------------------------------
+# State do Terraform — contém o estado real da infraestrutura AWS
+# Pode conter valores sensíveis em texto claro (ex: senhas do RDS)
+# -----------------------------------------------------------------------------
+
+**/.terraform.tfstate
+**/.terraform.tfstate.backup
+**/terraform.tfstate
+**/terraform.tfstate.backup
+
+# Lock file de dependências — pode ser versionado em projetos de equipe,
+# mas ignorado aqui para evitar conflitos em ambientes solo de estudo
+.terraform.lock.hcl
+
+# Diretório de cache dos providers baixados pelo terraform init
+**/.terraform/
+
+# -----------------------------------------------------------------------------
+# Chaves SSH geradas pelo provider TLS
+# -----------------------------------------------------------------------------
+
+*.pem
+*.key
+
+# -----------------------------------------------------------------------------
+# Logs e arquivos temporários do Terraform
+# -----------------------------------------------------------------------------
+
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# -----------------------------------------------------------------------------
+# Sistema operacional
+# -----------------------------------------------------------------------------
+
+.DS_Store        # macOS
+Thumbs.db        # Windows
+*~               # arquivos temporários de editores Linux

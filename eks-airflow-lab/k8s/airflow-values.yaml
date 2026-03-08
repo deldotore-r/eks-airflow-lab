@@ -1,0 +1,209 @@
+################################################################################
+# k8s/airflow-values.yaml
+# Helm values customizados para o Apache Airflow.
+#
+# Este arquivo existe FORA do Terraform intencionalmente:
+# durante estudos, você ajustará recursos, variáveis e conexões com frequência.
+# Editar aqui e rodar `helm upgrade` é muito mais rápido que `terraform apply`.
+#
+# Como aplicar manualmente após edições:
+#   helm upgrade airflow apache-airflow/airflow \
+#     --namespace airflow \
+#     --version 1.13.1 \
+#     -f k8s/airflow-values.yaml
+#
+# Documentação completa dos values:
+#   https://airflow.apache.org/docs/helm-chart/stable/parameters-ref.html
+################################################################################
+
+################################################################################
+# Executor
+# KubernetesExecutor: cada task da DAG vira um Pod isolado no cluster.
+# Alternativas: LocalExecutor, CeleryExecutor (requer Redis).
+################################################################################
+executor: KubernetesExecutor
+
+################################################################################
+# Imagem base do Airflow
+# Usada pelo Scheduler, Webserver e pelos pods de task.
+# Troque por uma imagem customizada se suas DAGs precisarem de dependências
+# Python extras (ex: apache/airflow:2.8.1-python3.11 com providers adicionais).
+################################################################################
+images:
+  airflow:
+    repository: apache/airflow
+    tag: "2.8.1"
+    pullPolicy: IfNotPresent  # Não faz pull se a imagem já existe no node
+
+################################################################################
+# Webserver
+# Interface gráfica do Airflow. Exposta via Ingress/ALB.
+################################################################################
+webserver:
+  # Número de réplicas do webserver.
+  # 1 é suficiente para lab — em prod use 2+ para alta disponibilidade.
+  replicas: 1
+
+  # Recursos alocados para o pod do webserver.
+  # requests: mínimo garantido. limits: máximo permitido.
+  resources:
+    requests:
+      cpu: "200m"      # 0.2 vCPU
+      memory: "512Mi"
+    limits:
+      cpu: "500m"      # 0.5 vCPU
+      memory: "1Gi"
+
+  # Usuário admin criado automaticamente na primeira inicialização.
+  defaultUser:
+    enabled: true
+    role: Admin
+    username: admin
+    email: admin@example.com
+    firstName: Admin
+    lastName: User
+    # Senha definida via terraform.tfvars (airflow_webserver_password).
+    # Substituída pelo Terraform durante o helm install.
+    password: ~  # ~ = null em YAML; valor real injetado pelo Terraform
+
+################################################################################
+# Scheduler
+# Componente que lê as DAGs, agenda execuções e instrui o executor a criar pods.
+################################################################################
+scheduler:
+  replicas: 1
+
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+
+  # Intervalo em segundos entre cada ciclo de parsing das DAGs.
+  # Valores menores detectam novas DAGs mais rápido, mas consomem mais CPU.
+  env:
+    - name: AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL
+      value: "30"
+
+################################################################################
+# DAGs
+# Configuração de como as DAGs chegam ao cluster.
+# Opções: gitSync (recomendado para prod), persistentVolume, ou imagem customizada.
+################################################################################
+dags:
+  # gitSync: sincroniza DAGs automaticamente de um repositório Git.
+  # Desabilitado por padrão — habilite apontando para seu repositório.
+  gitSync:
+    enabled: false
+    # repo: https://github.com/seu-usuario/seu-repo-de-dags.git
+    # branch: main
+    # subPath: dags/        # pasta dentro do repo onde estão os arquivos .py
+    # period: 60s           # intervalo de sincronização
+
+  # Para testes manuais sem gitSync, monte um PersistentVolume ou
+  # use kubectl cp para copiar DAGs diretamente para o pod do scheduler:
+  # kubectl cp minha_dag.py airflow/<scheduler-pod>:/opt/airflow/dags/
+
+################################################################################
+# Logs
+# Configuração de armazenamento dos logs de execução das tasks.
+################################################################################
+logs:
+  persistence:
+    # false = logs em emptyDir (perdidos quando o pod reinicia).
+    # Para lab é suficiente. Em prod, use true com PVC ou S3.
+    enabled: false
+
+################################################################################
+# Banco de dados de metadados
+# Desabilita o PostgreSQL embutido do chart — usamos o RDS externo provisionado
+# pelo Terraform. A connection string real é injetada pelo módulo addons.
+################################################################################
+postgresql:
+  enabled: false  # NUNCA habilitar — conflitaria com o RDS externo
+
+# Redis: necessário apenas para CeleryExecutor. Desabilitado pois usamos
+# KubernetesExecutor.
+redis:
+  enabled: false
+
+################################################################################
+# Ingress
+# Expõe o webserver via ALB criado pelo AWS Load Balancer Controller.
+# As anotações instruem o controller sobre o tipo de ALB a criar.
+################################################################################
+ingress:
+  web:
+    enabled: true
+    annotations:
+      # Instrui o LB Controller a usar ALB (não NLB)
+      kubernetes.io/ingress.class: alb
+      # internet-facing = ALB público. Use internal para acesso apenas dentro da VPC.
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      # ip = tráfego vai diretamente para o IP do pod (mais eficiente que instance mode)
+      alb.ingress.kubernetes.io/target-type: ip
+      # Porta de entrada do ALB
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+
+################################################################################
+# KubernetesExecutor — configuração dos pods de task
+# Define recursos padrão para os pods criados pelo executor ao rodar tasks.
+# Pode ser sobrescrito por task individual via `executor_config` na DAG.
+################################################################################
+config:
+  kubernetes_executor:
+    # Namespace onde os pods de task serão criados.
+    # Deve ser o mesmo namespace do Airflow.
+    namespace: airflow
+
+  core:
+    # Número máximo de tasks rodando simultaneamente em todo o cluster.
+    parallelism: 16
+
+    # Número máximo de tasks simultâneas por DAG run.
+    max_active_tasks_per_dag: 8
+
+  scheduler:
+    # Número máximo de DAG runs ativos simultaneamente por DAG.
+    max_active_runs_per_dag: 3
+
+################################################################################
+# Recursos padrão dos pods de task (KubernetesExecutor)
+# Cada task criada pelo executor herda estes limites, a menos que a DAG
+# defina executor_config com valores próprios.
+################################################################################
+workers:
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+################################################################################
+# ServiceAccount
+# O Airflow precisa de permissão para criar e monitorar pods no cluster.
+# O Helm chart cria automaticamente um ServiceAccount com as permissões
+# necessárias dentro do namespace airflow.
+################################################################################
+serviceAccount:
+  create: true
+  name: airflow
+
+################################################################################
+# Variáveis de ambiente globais
+# Disponíveis em todos os componentes do Airflow (scheduler, webserver, tasks).
+# Adicione aqui variáveis que suas DAGs precisam acessar via os.environ.
+################################################################################
+env:
+  - name: AIRFLOW__CORE__LOAD_EXAMPLES
+    value: "false"  # Desabilita as DAGs de exemplo que vêm com o Airflow
+
+  - name: AIRFLOW__WEBSERVER__EXPOSE_CONFIG
+    value: "true"   # Permite ver a configuração do Airflow na UI (útil para estudo)
+
+  - name: AIRFLOW__CORE__DEFAULT_TIMEZONE
+    value: "America/Sao_Paulo"

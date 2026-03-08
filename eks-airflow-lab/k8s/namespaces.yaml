@@ -1,0 +1,50 @@
+# =============================================================================
+# k8s/namespaces.yaml
+# Define os namespaces base do cluster fora do Terraform.
+#
+# Por que este arquivo existe separado do Terraform?
+# O namespace "airflow" é criado pelo módulo addons via Terraform.
+# Este arquivo documenta e permite recriar manualmente os namespaces
+# auxiliares úteis durante estudos — sem precisar rodar terraform apply.
+#
+# Aplicar manualmente:
+#   kubectl apply -f k8s/namespaces.yaml
+#
+# Namespaces do cluster (visão completa):
+#   - default        : criado automaticamente pelo Kubernetes
+#   - kube-system    : componentes internos do Kubernetes (CoreDNS, kube-proxy)
+#   - kube-public    : dados públicos do cluster (ConfigMap com info do cluster)
+#   - kube-node-lease: heartbeats de disponibilidade dos nodes
+#   - airflow        : criado pelo Terraform via módulo addons
+#   - monitoring     : definido neste arquivo — para ferramentas de observabilidade
+#   - etl            : definido neste arquivo — para pipelines ETL auxiliares
+# =============================================================================
+
+---
+# Namespace para ferramentas de observabilidade.
+# Reservado para instalação futura de Prometheus, Grafana ou Loki
+# sem poluir o namespace airflow ou kube-system.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    environment: lab
+    project: eks-airflow-lab
+    # Label padrão recomendada pelo Kubernetes para identificar o namespace
+    kubernetes.io/metadata.name: monitoring
+
+---
+# Namespace para pods ETL auxiliares que não são gerenciados pelo Airflow.
+# Útil para testes manuais de imagens Docker de pipelines antes de
+# integrá-las às DAGs.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: etl
+  labels:
+    name: etl
+    environment: lab
+    project: eks-airflow-lab
+    kubernetes.io/metadata.name: etl
